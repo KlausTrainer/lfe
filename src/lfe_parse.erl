@@ -40,8 +40,8 @@
 %% though we have no automatic generator.
 %%
 %% Terminals
-%%    symbol number string fun '(' ')' '[' ']' '.' '\'' ',' '@' ',@' '`' '#('
-%%       '#B(' .
+%%    symbol number string fun '(' ')' '[' ']' '.' '\'' ',' '@' ',@' '`'
+%%       '{' '}' '#(' .
 %%
 %% Nonterminals form sexpr list list_tail proper_list .
 %%
@@ -55,34 +55,35 @@
 %%  7 sexpr -> ',' sexpr : [unquote,'$2'].
 %%  8 sexpr -> ',@' sexpr : ['unquote-splicing','$2'].
 %%  9 sexpr -> ( list ) : '$2'.
-%% 10 sexpr -> [ list ] : '$2'.
-%% 11 sexpr -> '#(' proper_list ')' : list_to_tuple('$2').
-%% 12 sexpr -> '#B(' proper_list ')' :
+%% 10 sexpr -> [ list ] : [list|'$2'].
+%% 11 sexpr -> '{' list '}' : [tuple|'$2'].
+%% 12 sexpr -> '#(' proper_list ')' : list_to_tuple('$2').
+%% 13 sexpr -> '#B(' proper_list ')' :
 %%        case catch lfe_eval:expr([binary|'$2']) of
 %%          Bin when is_bitstring(Bin) -> Bin;
 %%          _ -> return_error(line('$1'))
 %%        end
-%% 13 list -> sexpr list_tail : ['$1'|'$2].
-%% 14 list -> empty : [].
-%% 15 list_tail -> sexpr list_tail : ['$1'|'$2'].
-%% 16 list_tail -> . sexpr : '$2'.
-%% 17 list_tail -> empty : [].
-%% 18 proper_list -> sexpr proper_list : ['$1'|'$2'].
-%% 19 proper_list -> empty : [].
+%% 14 list -> sexpr list_tail : ['$1'|'$2].
+%% 15 list -> empty : [].
+%% 16 list_tail -> sexpr list_tail : ['$1'|'$2'].
+%% 17 list_tail -> . sexpr : '$2'.
+%% 18 list_tail -> empty : [].
+%% 19 proper_list -> sexpr proper_list : ['$1'|'$2'].
+%% 20 proper_list -> empty : [].
 
 %% The computed First and Follow sets for the productions. This is the
 %% only really tricky bit.
 %%
-%% First(f) = {symbol,number,string,fun,(,[,',`,,,,@,#/,#B(}
-%% First(s) = {symbol,number,string,fun,(,[,',`,,,,@,#/,#B(}
-%% First(l) = {symbol,number,string,fun,(,[,',`,,,,@,#/,#B(,empty}
-%% First(t) = {symbol,number,string,fun,(,[,.,',`,,,,@,#/,#B(,empty}
-%% First(p) = {symbol,number,string,fun,(,[,',`,,,,@,#/,#B(,empty}
+%% First(f) = {symbol,number,string,fun,(,[,{,',`,,,,@,#/,#B(}
+%% First(s) = {symbol,number,string,fun,(,[,{,',`,,,,@,#/,#B(}
+%% First(l) = {symbol,number,string,fun,(,[,{,',`,,,,@,#/,#B(,empty}
+%% First(t) = {symbol,number,string,fun,(,[,{,.,',`,,,,@,#/,#B(,empty}
+%% First(p) = {symbol,number,string,fun,(,[,{,',`,,,,@,#/,#B(,empty}
 %% Follow(f) = empty
-%% Follow(s) = {symbol,number,string,fun,(,[,),],',`,,,,@,#/,#B(}
-%% Follow(l) = {symbol,number,string,fun,(,[,),],',`,,,,@,#/,#B(}
-%% Follow(t) = {symbol,number,string,fun,(,[,),],',`,,,,@,#/,#B(}
-%% Follow(p) = {symbol,number,string,fun,(,[,),],',`,,,,@,#/,#B(}
+%% Follow(s) = {symbol,number,string,fun,(,[,{,),],},',`,,,,@,#/,#B(}
+%% Follow(l) = {symbol,number,string,fun,(,[,{,),],},',`,,,,@,#/,#B(}
+%% Follow(t) = {symbol,number,string,fun,(,[,{,),],},',`,,,,@,#/,#B(}
+%% Follow(p) = {symbol,number,string,fun,(,[,{,),],},',`,,,,@,#/,#B(}
 
 %% The table (tedious).
 %% Top  symbol      (         )       [       ]       .       '`,,@    #(#B(
@@ -115,23 +116,26 @@ reduce(7, [S,_|Vs]) -> [[unquote,S]|Vs];      %s->, s
 reduce(8, [S,_|Vs]) ->               %s->,@ s
     [['unquote-splicing',S]|Vs];
 reduce(9, [_,L,_|Vs]) -> [L|Vs];     %s->( s )
-reduce(10, [_,L,_|Vs]) -> [L|Vs];    %s->[ s ]
-reduce(11, [_,L,_|Vs]) ->            %s->#( p )
+reduce(10, [_,L,_|Vs]) ->            %s->[ s ]
+    [[list|L]|Vs];
+reduce(11, [_,L,_|Vs]) ->            %s->{ s }
+    [[tuple|L]|Vs];
+reduce(12, [_,L,_|Vs]) ->            %s->#( p )
     [list_to_tuple(L)|Vs];
-reduce(12, [_,L,B|Vs]) ->            %s->#B( p )
+reduce(13, [_,L,B|Vs]) ->            %s->#B( p )
     case catch lfe_eval:expr([binary|L]) of
 	Bin when is_bitstring(Bin) -> [Bin|Vs];
 	_ -> {error,line(B),{illegal,binary}}
     end;
-reduce(13, [T,H|Vs]) -> [[H|T]|Vs];  %l->s t
-reduce(14, Vs) -> [[]|Vs];           %l->empty
-reduce(15, [T,H|Vs]) -> [[H|T]|Vs];  %t->s t
-reduce(16, [T,_|Vs]) -> [T|Vs];      %t->. s
-reduce(17, Vs) -> [[]|Vs];           %t->empty
-reduce(18, [T,H|Vs]) -> [[H|T]|Vs];  %p->s t
-reduce(19, Vs) -> [[]|Vs].           %p->empty
+reduce(14, [T,H|Vs]) -> [[H|T]|Vs];  %l->s t
+reduce(15, Vs) -> [[]|Vs];           %l->empty
+reduce(16, [T,H|Vs]) -> [[H|T]|Vs];  %t->s t
+reduce(17, [T,_|Vs]) -> [T|Vs];      %t->. s
+reduce(18, Vs) -> [[]|Vs];           %t->empty
+reduce(19, [T,H|Vs]) -> [[H|T]|Vs];  %p->s t
+reduce(20, Vs) -> [[]|Vs].           %p->empty
 
-%% The table, this gets pretty big but is very straight forward.
+%% The table, this gets pretty big but is very straight-forward.
 table(?FORM, symbol) -> [?EXPR];
 table(?FORM, number) -> [?EXPR];
 table(?FORM, string) -> [?EXPR];
@@ -142,6 +146,7 @@ table(?FORM, ',') -> [?EXPR];
 table(?FORM, ',@') -> [?EXPR];
 table(?FORM, '(') -> [?EXPR];
 table(?FORM, '[') -> [?EXPR];
+table(?FORM, '{') -> [?EXPR];
 table(?FORM, '#(') -> [?EXPR];
 table(?FORM, '#B(') -> [?EXPR];
 
@@ -155,54 +160,60 @@ table(?EXPR, ',') -> [',',?EXPR,{reduce,7}];
 table(?EXPR, ',@') -> [',@',?EXPR,{reduce,8}];
 table(?EXPR, '(') -> ['(',?LIST,')',{reduce,9}];
 table(?EXPR, '[') -> ['[',?LIST,']',{reduce,10}];
-table(?EXPR, '#(') -> ['#(',?PROP,')',{reduce,11}];
-table(?EXPR, '#B(') -> ['#B(',?PROP,')',{reduce,12}];
+table(?EXPR, '{') -> ['{',?PROP,'}',{reduce,11}];
+table(?EXPR, '#(') -> ['#(',?PROP,')',{reduce,12}];
+table(?EXPR, '#B(') -> ['#B(',?PROP,')',{reduce,13}];
 
-table(?LIST, symbol) -> [?EXPR,?TAIL,{reduce,13}];
-table(?LIST, number) -> [?EXPR,?TAIL,{reduce,13}];
-table(?LIST, string) -> [?EXPR,?TAIL,{reduce,13}];
-table(?LIST, 'fun') -> [?EXPR,?TAIL,{reduce,13}];
-table(?LIST, '\'') -> [?EXPR,?TAIL,{reduce,13}];
-table(?LIST, '`') -> [?EXPR,?TAIL,{reduce,13}];
-table(?LIST, ',') -> [?EXPR,?TAIL,{reduce,13}];
-table(?LIST, ',@') -> [?EXPR,?TAIL,{reduce,13}];
-table(?LIST, '(') -> [?EXPR,?TAIL,{reduce,13}];
-table(?LIST, '[') -> [?EXPR,?TAIL,{reduce,13}];
-table(?LIST, '#(') -> [?EXPR,?TAIL,{reduce,13}];
-table(?LIST, '#B(') -> [?EXPR,?TAIL,{reduce,13}];
-table(?LIST, ')') -> [{reduce,14}];
-table(?LIST, ']') -> [{reduce,14}];
+table(?LIST, symbol) -> [?EXPR,?TAIL,{reduce,14}];
+table(?LIST, number) -> [?EXPR,?TAIL,{reduce,14}];
+table(?LIST, string) -> [?EXPR,?TAIL,{reduce,14}];
+table(?LIST, 'fun') -> [?EXPR,?TAIL,{reduce,14}];
+table(?LIST, '\'') -> [?EXPR,?TAIL,{reduce,14}];
+table(?LIST, '`') -> [?EXPR,?TAIL,{reduce,14}];
+table(?LIST, ',') -> [?EXPR,?TAIL,{reduce,14}];
+table(?LIST, ',@') -> [?EXPR,?TAIL,{reduce,14}];
+table(?LIST, '(') -> [?EXPR,?TAIL,{reduce,14}];
+table(?LIST, '[') -> [?EXPR,?TAIL,{reduce,14}];
+table(?LIST, '{') -> [?EXPR,?TAIL,{reduce,14}];
+table(?LIST, '#(') -> [?EXPR,?TAIL,{reduce,14}];
+table(?LIST, '#B(') -> [?EXPR,?TAIL,{reduce,14}];
+table(?LIST, ')') -> [{reduce,15}];
+table(?LIST, ']') -> [{reduce,15}];
 
-table(?TAIL, symbol) -> [?EXPR,?TAIL,{reduce,15}];
-table(?TAIL, number) -> [?EXPR,?TAIL,{reduce,15}];
-table(?TAIL, string) -> [?EXPR,?TAIL,{reduce,15}];
-table(?TAIL, 'fun') -> [?EXPR,?TAIL,{reduce,15}];
-table(?TAIL, '\'') -> [?EXPR,?TAIL,{reduce,15}];
-table(?TAIL, '`') -> [?EXPR,?TAIL,{reduce,15}];
-table(?TAIL, ',') -> [?EXPR,?TAIL,{reduce,15}];
-table(?TAIL, ',@') -> [?EXPR,?TAIL,{reduce,15}];
-table(?TAIL, '(') -> [?EXPR,?TAIL,{reduce,15}];
-table(?TAIL, '[') -> [?EXPR,?TAIL,{reduce,15}];
-table(?TAIL, '#(') -> [?EXPR,?TAIL,{reduce,15}];
-table(?TAIL, '#B(') -> [?EXPR,?TAIL,{reduce,15}];
-table(?TAIL, '.') -> ['.',?EXPR,{reduce,16}];
-table(?TAIL, ')') -> [{reduce,17}];
-table(?TAIL, ']') -> [{reduce,17}];
+table(?TAIL, symbol) -> [?EXPR,?TAIL,{reduce,16}];
+table(?TAIL, number) -> [?EXPR,?TAIL,{reduce,16}];
+table(?TAIL, string) -> [?EXPR,?TAIL,{reduce,16}];
+table(?TAIL, 'fun') -> [?EXPR,?TAIL,{reduce,16}];
+table(?TAIL, '\'') -> [?EXPR,?TAIL,{reduce,16}];
+table(?TAIL, '`') -> [?EXPR,?TAIL,{reduce,16}];
+table(?TAIL, ',') -> [?EXPR,?TAIL,{reduce,16}];
+table(?TAIL, ',@') -> [?EXPR,?TAIL,{reduce,16}];
+table(?TAIL, '(') -> [?EXPR,?TAIL,{reduce,16}];
+table(?TAIL, '[') -> [?EXPR,?TAIL,{reduce,16}];
+table(?TAIL, '{') -> [?EXPR,?TAIL,{reduce,16}];
+table(?TAIL, '#(') -> [?EXPR,?TAIL,{reduce,16}];
+table(?TAIL, '#B(') -> [?EXPR,?TAIL,{reduce,16}];
+table(?TAIL, '.') -> ['.',?EXPR,{reduce,17}];
+table(?TAIL, ')') -> [{reduce,18}];
+table(?TAIL, ']') -> [{reduce,18}];
+table(?TAIL, '}') -> [{reduce,18}];
 
-table(?PROP, symbol) -> [?EXPR,?PROP,{reduce,18}];
-table(?PROP, number) -> [?EXPR,?PROP,{reduce,18}];
-table(?PROP, string) -> [?EXPR,?PROP,{reduce,18}];
-table(?PROP, 'fun') -> [?EXPR,?PROP,{reduce,18}];
-table(?PROP, '\'') -> [?EXPR,?PROP,{reduce,18}];
-table(?PROP, '`') -> [?EXPR,?PROP,{reduce,18}];
-table(?PROP, ',') -> [?EXPR,?PROP,{reduce,18}];
-table(?PROP, ',@') -> [?EXPR,?PROP,{reduce,18}];
-table(?PROP, '(') -> [?EXPR,?PROP,{reduce,18}];
-table(?PROP, '[') -> [?EXPR,?PROP,{reduce,18}];
-table(?PROP, '#(') -> [?EXPR,?PROP,{reduce,18}];
-table(?PROP, '#B(') -> [?EXPR,?PROP,{reduce,18}];
-table(?PROP, ')') -> [{reduce,19}];
-table(?PROP, ']') -> [{reduce,19}];
+table(?PROP, symbol) -> [?EXPR,?PROP,{reduce,19}];
+table(?PROP, number) -> [?EXPR,?PROP,{reduce,19}];
+table(?PROP, string) -> [?EXPR,?PROP,{reduce,19}];
+table(?PROP, 'fun') -> [?EXPR,?PROP,{reduce,19}];
+table(?PROP, '\'') -> [?EXPR,?PROP,{reduce,19}];
+table(?PROP, '`') -> [?EXPR,?PROP,{reduce,19}];
+table(?PROP, ',') -> [?EXPR,?PROP,{reduce,19}];
+table(?PROP, ',@') -> [?EXPR,?PROP,{reduce,19}];
+table(?PROP, '(') -> [?EXPR,?PROP,{reduce,19}];
+table(?PROP, '[') -> [?EXPR,?PROP,{reduce,19}];
+table(?PROP, '{') -> [?EXPR,?PROP,{reduce,19}];
+table(?PROP, '#(') -> [?EXPR,?PROP,{reduce,19}];
+table(?PROP, '#B(') -> [?EXPR,?PROP,{reduce,19}];
+table(?PROP, ')') -> [{reduce,20}];
+table(?PROP, ']') -> [{reduce,20}];
+table(?PROP, '}') -> [{reduce,20}];
 
 table(_, _) -> error.
 
